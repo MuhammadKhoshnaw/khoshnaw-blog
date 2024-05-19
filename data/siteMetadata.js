@@ -9,7 +9,7 @@ const siteMetadata = {
     siteUrl: 'https://tailwind-nextjs-starter-blog.vercel.app',//todo change it
     siteRepo: 'https://github.com/MuhammadKhoshnaw/khoshnaw-blog',
     siteLogo: '/static/images/logo.png',
-    socialBanner: '/static/images/twitter-card.png',
+    socialBanner: '/static/images/blog-card.png',
     // mastodon: 'https://mastodon.social/@mastodonuser',
     email: 'khoshnaw.eng@gmail.com',
     github: 'https://github.com/MuhammadKhoshnaw',
