@@ -1,0 +1,324 @@
+---
+title: 'Localization in Android Apps'
+date: '2024-05-20'
+lastmod: '2024-05-20'
+tags: ['Localization', 'Android', 'Apps']
+draft: false
+summary: 'This article explains how to localize strings in Android applications within a clean architecture environment. It covers best practices, tools, and techniques to make localizing your application easy and more maintainable.'
+images: ['/static/images/localization/localization-in-android-apps.png']
+---
+
+![localization-in-android-apps](/static/images/localization/localization-in-android-apps.png)
+
+## Introduction
+
+This article explains how to localize strings in Android applications within a clean architecture [^1] environment. It covers best practices, tools, and techniques to make localizing your application easy and more maintainable.
+
+<TOCInline toc={props.toc} exclude="Introduction"/>
+
+## Entity
+
+First, let's define our localized strings using data classes in the entity layer.
+
+```kotlin
+package com.example.localizedstring.entity
+
+import java.io.Serializable
+
+sealed interface LocalizedString : Serializable
+
+data class LocalizedIntId(
+    val id: Int,
+    val args: List<Any> = emptyList()
+) : LocalizedString
+
+data class LocalizedStringId(
+    val id: String,
+    val args: List<Any> = emptyList()
+) : LocalizedString
+
+data class LocalizedRawString(
+    val string: String
+) : LocalizedString
+
+object LocalizedEmptyString : LocalizedString
+```
+We need an interface named `LocalizedString` that represents a localized string. but usually in big android projects
+a localized string can be represented with an Int id or a String id, String id localization is more common if you are
+getting the strings from a server and usually projects have a third party that organizes those strings.
+
+So we will create two data
+classes `LocalizedIntId` and `LocalizedStringId` that represent a localized string with an Int id and
+a String id respectively.
+
+We will also create a data class `LocalizedRawString` that represents
+a raw string without any localization this will be needed if your string don't need localization or in our tests
+for creating dummy strings. Finally, we will create an object `LocalizedEmptyString` that represents an empty string.
+
+Usually In addition to the main localized string, we might need to pass some arguments to the string,
+We will add an optional list of arguments to the localized strings.
+
+---
+
+Now let's create some helper functions to create localized strings. those functions will help us to create
+localized strings easily. And it will make the user of the localized string not aware of the implementation details
+of the LocalizedString interface.
+
+```kotlin
+package com.example.localizedstring.entity
+
+fun localizedString(
+    id: Int,
+    vararg args: Any
+): LocalizedString = LocalizedIntId(id = id, args.toList())
+
+fun localizedString(
+    id: Int,
+    args: List<Any>,
+): LocalizedString = LocalizedIntId(id = id, args.toList())
+
+fun localizedString(
+    id: String,
+    vararg args: Any
+): LocalizedString = LocalizedStringId(id = id, args.toList())
+
+fun localizedString(
+    id: String,
+    args: List<Any>
+): LocalizedString = LocalizedStringId(id = id, args.toList())
+
+fun localizedRowString(
+    string: String
+): LocalizedString = LocalizedRawString(string = string)
+
+fun localizedString(): LocalizedString = LocalizedEmptyString
+
+fun Int.toLocalizedString(
+    vararg args: Any
+): LocalizedString = LocalizedIntId(id = this, args = args.toList())
+
+fun String.toLocalizedString(
+    vararg args: Any
+): LocalizedString = LocalizedStringId(id = this, args = args.toList())
+
+fun String.toLocalizedRowString(): LocalizedString = localizedRowString(string = this)
+
+fun LocalizedString.withArgs(
+    vararg args: Any
+): LocalizedString = when (this) {
+    is LocalizedIntId -> LocalizedIntId(id = id, args = args.toList())
+    is LocalizedStringId -> LocalizedStringId(id = id, args = args.toList())
+    else -> this
+}
+```
+
+## ViewModel
+
+In your ViewModel, we need some utils functions that help us to get the localized strings more easily.
+
+```kotlin
+package com.example.localizedstring.adapters.viewModel
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.res.Resources
+import androidx.annotation.StringRes
+import androidx.fragment.app.Fragment
+import com.example.localizedstring.entity.empty
+import timber.log.Timber
+
+fun Context.string(@StringRes id: Int) = runOrEmpty {
+    resources.string(id)
+}
+
+fun Context.string(@StringRes id: Int, vararg formatArgs: Any) = runOrEmpty {
+    resources.string(id, *formatArgs)
+}
+
+fun Fragment.string(@StringRes id: Int) = runOrEmpty {
+    requireContext().string(id)
+}
+
+fun Fragment.string(@StringRes id: Int, vararg formatArgs: Any) = runOrEmpty {
+    requireContext().string(id, *formatArgs)
+}
+
+fun Activity.string(@StringRes id: Int) = runOrEmpty {
+    this.resources.string(id)
+}
+
+fun Activity.string(@StringRes id: Int, vararg formatArgs: Any) = runOrEmpty {
+    this.resources.string(id, *formatArgs)
+}
+
+fun Resources.string(@StringRes id: Int): String = runOrEmpty {
+    getString(id)
+}
+
+fun Resources.string(@StringRes id: Int, vararg formatArgs: Any): String = runOrEmpty {
+    getString(id, *formatArgs)
+}
+
+private const val STRING_RESOURCE_TYPE = "string"
+
+@SuppressLint("DiscouragedApi")
+fun Context.getStringResourceByName(
+    aString: String,
+    vararg formatArgs: Any,
+): String = runCatching {
+    val packageName: String = packageName
+    val resId: Int = resources.getIdentifier(aString, STRING_RESOURCE_TYPE, packageName)
+    getString(resId, *formatArgs)
+}.getOrElse {
+    Timber.tag("getStringResourceByName").e(it)
+    String.empty
+}
+```
+The getStringResourceByName in this example is getting the android resource string id by its name,
+this is usually different in real life projects, since usually you have a third party that organizes the strings.
+But this is a good example to show how to get a string by its name.
+
+---
+
+Now lets create some extension functions to get the localized strings.
+
+```kotlin
+package com.example.localizedstring.adapters.viewModel
+
+import android.app.Activity
+import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.Fragment
+import com.example.localizedstring.entity.LocalizedEmptyString
+import com.example.localizedstring.entity.LocalizedIntId
+import com.example.localizedstring.entity.LocalizedRawString
+import com.example.localizedstring.entity.LocalizedString
+import com.example.localizedstring.entity.LocalizedStringId
+import com.example.localizedstring.entity.empty
+
+@Composable
+fun LocalizedIntId.string(): String = string(LocalContext.current)
+
+fun LocalizedIntId.string(context: Context): String {
+    val translatedArgs = args.map { arg ->
+        if (arg is LocalizedString) arg.string(context)
+        else arg
+    }
+    return context.string(id, *translatedArgs.toTypedArray())
+}
+
+@Composable
+fun LocalizedStringId.string(): String = string(LocalContext.current)
+
+// TODO: User your third party library to get the string if you have one
+@Suppress("UnusedReceiverParameter")
+fun LocalizedStringId.string(context: Context): String =
+    context.getStringResourceByName(id, *args.toTypedArray())
+
+fun LocalizedRawString.string(): String = string
+
+fun LocalizedEmptyString.string(): String = String.empty
+
+@Composable
+fun LocalizedString.string(): String = string(LocalContext.current)
+
+fun Fragment.string(
+    localizedString: LocalizedString
+): String = localizedString.string(requireContext())
+
+fun Activity.string(
+    localizedString: LocalizedString
+): String = localizedString.string(this)
+
+fun LocalizedString.string(context: Context): String = when (this) {
+    is LocalizedIntId -> string(context)
+    is LocalizedStringId -> string(context)
+    is LocalizedRawString -> string()
+    is LocalizedEmptyString -> string()
+}
+
+@Composable
+fun List<LocalizedString>.string(): List<String> = map { it.string() }
+```
+Those extension functions are simply detecting the type of the localized string and getting
+the translation with the arguments if needed.
+
+## Repository
+
+In your repository mappers instead of returning the raw string, you should return the localized string.
+this wey the string and its arguments will be encapsulated in the localized string object. and your view models you can
+simply pass them to the view.
+
+```kotlin
+fun UniverseDestinyResultRemote.toEntity() = UniverseDestinyResult(
+    message = localizedString(id = messageTranslationKey, args = messageArgs),
+    success = success,
+)
+```
+
+## View (composable)
+In your composable you can simply call the `.string()` extension function to get the localized string.
+The composable don't need to know how to get the string, it just needs to know how to display it.
+
+```kotlin
+@Composable
+fun MyComposable() {
+    val intIdString = localizedString(R.string.app_name)
+    val intIdStringWithArgs = localizedString(R.string.reset_existence_delay_button, 2)
+    val stringIdString = localizedString("app_name")
+    val stringIdStringWithArgs = localizedString("reset_existence_delay_button", 2)
+    val rawString = localizedString("Hello World!")
+    val emptyString = localizedString()
+
+    Column {
+        Text(text = intIdString.string())
+        Text(text = intIdStringWithArgs.string())
+        Text(text = stringIdString.string())
+        Text(text = stringIdStringWithArgs.string())
+        Text(text = rawString.string())
+        Text(text = emptyString.string())
+    }
+}
+```
+## View (Activity/Fragment)
+In your Activity or Fragment you can simply call the `string()` extension function and pass the localized string to it.
+
+```kotlin
+class MyFragment : Fragment() {
+    private val textView = TextView(context) // just for demonstration
+    //create your view
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        val intIdString = R.string.app_name.toLocalizedString()
+        val intIdStringWithArgs = R.string.reset_existence_delay_button.toLocalizedString(2)
+        val stringIdString = "app_name".toLocalizedString()
+        val stringIdStringWithArgs = "reset_existence_delay_button".toLocalizedString(2)
+        val rawString = "Hello World!".toLocalizedRowString()
+        val emptyString = localizedString()
+
+        textView.text = string(intIdString)
+        textView.text = string(intIdStringWithArgs)
+        textView.text = string(stringIdString)
+        textView.text = string(stringIdStringWithArgs)
+        textView.text = string(rawString)
+        textView.text = string(emptyString)
+    }
+}
+```
+
+## Sample App
+
+You can see the full implementation in the following sample app. The app is a simple game like app that user tab a button
+to increase its score.
+
+<p>
+    <a href="https://github.com/MuhammadKhoshnaw/localizedstring" target="_blank">Check the sample app on GitHub</a>
+</p>
+
+<p>
+    <a href="/static/apk/localization-sample-app.apk">Download sample app APK</a>
+</p>
+
+[^1]: To read more about clean architecture check out <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html" target="_blank">Clean Architecture</a>
