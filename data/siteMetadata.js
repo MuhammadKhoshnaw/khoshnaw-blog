@@ -6,7 +6,7 @@ const siteMetadata = {
     description: 'A blog chronicling the journey of Muhammad Khoshnaw, an Android developer',
     language: 'en-us',
     theme: 'system', // system, dark or light
-    siteUrl: 'https://khoshnaw-blog.vercel.app',//todo change it
+    siteUrl: 'https://www.khoshnaw.info',
     siteRepo: 'https://github.com/MuhammadKhoshnaw/khoshnaw-blog',
     siteLogo: '/static/images/logo.png',
     socialBanner: '/static/images/blog-card.png',
